@@ -7,9 +7,12 @@
 
 import UIKit
 import FirebaseAuth
+import JGProgressHUD
 
 class RegisterViewController: UIViewController {
 
+    private var spinner = JGProgressHUD(style: .dark)
+    
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.clipsToBounds = true
@@ -151,10 +154,17 @@ class RegisterViewController: UIViewController {
             return
         }
         
+        spinner.show(in: view)
+        
         DatabaseManager.shared.userExists(with: email) { [weak self] exists in
             guard let strongSelf = self else {
                 return
             }
+            
+            DispatchQueue.main.async {
+                strongSelf.spinner.dismiss()
+            }
+            
             
             guard !exists else{
                 strongSelf.alertUserLoginError(message: "Account for this email is alredy exists.")
@@ -171,7 +181,28 @@ class RegisterViewController: UIViewController {
                 return
             }
             
-            DatabaseManager.shared.insertUser(user: ChatAppUser(firstName: firstName, lastName: lastName, emailAddress: email))
+            let chatUser = ChatAppUser(firstName: firstName, lastName: lastName, emailAddress: email)
+            DatabaseManager.shared.insertUser(user: chatUser, completion: { success in
+                if success {
+                    
+                    UserDefaults.standard.set(email, forKey: "email")
+                    guard let profilePicture = strongSelf.imageView.image, let imageData = profilePicture.pngData() else {
+                        return
+                    }
+                    
+                    let fileName = chatUser.profilePictureFileName
+                    StorageManager.shared.uploadProfilePicture(with: imageData, fileName: fileName, completion: { result in
+                        switch result {
+                        case .success(let downloadUrl):
+                            UserDefaults.standard.set(downloadUrl, forKey: "downloaded_profile_url")
+                            print(downloadUrl)
+                            
+                        case .failure(let error):
+                            print(error)
+                        }
+                    })
+                }
+            }) 
             
             strongSelf.navigationController?.dismiss(animated: true)
         }
